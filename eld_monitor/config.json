@@ -1,0 +1,41 @@
+{
+  "eld_accounts": [
+    {
+      "id": "factor_main",
+      "name": "Factor ELD",
+      "type": "factor",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzUyNDM1NDgsInNlc3Npb25faWQiOiI0NzgwOWU4OC1lOTY0LTRkOWItYTZiYy00NzBmMzZkMTEyZmUiLCJ1c2VyX2lkIjoiYTExMWIxZWMtYjI3Ni00ZWI0LWIwNzktMzgyNWEzZTUyMDUwIn0.dcBAbrHyAeliXptPViGuKjfE9YmPw4YYTn9_uqLwPnI",
+      "base_url": "https://api.factorhq.com",
+      "enabled": true
+    },
+    {
+      "id": "leader_main",
+      "name": "Leader ELD",
+      "type": "leader",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzUyMjk0NTEsInNlc3Npb25faWQiOiJlMmVhODhhZS0yYTRkLTQxN2QtOTU3OS0zMWQzMDIzNjUyYzYiLCJ1c2VyX2lkIjoiODE0OTE3MTUtNmUzMS00YjE2LTk5MGMtMWU5YjlmZmJlNmQ2In0.5olmWpyijyCiCAiTUAtN4TbX3g8eqYu_a3aFj0yFARs",
+      "base_url": "https://api.leadereld.com",
+      "enabled": true
+    }
+  ],
+  "telegram_accounts": [
+    {
+      "id": "main_account",
+      "name": "Main Account",
+      "api_id": 35507477,
+      "api_hash": "201ab47b2a808cc66c3ef61529dba649",
+      "phone": "+998775013234",
+      "session_name": "eld_monitor_main",
+      "enabled": true
+    }
+  ],
+  "settings": {
+    "poll_interval_seconds": 60,
+    "alert_repeat_interval_minutes": 30,
+    "hos_shift_warning_hours": 2,
+    "hos_drive_warning_hours": 2,
+    "hos_break_warning_hours": 2,
+    "hos_cycle_warning_hours": 30,
+    "on_duty_stuck_hours": 2,
+    "profile_stale_days": 3
+  }
+}
