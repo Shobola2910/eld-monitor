@@ -1,27 +1,35 @@
 services:
   - type: web
     name: eld-monitor
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    disk:
-      name: eld-data
-      mountPath: /data
-      sizeGB: 1
+    startCommand: python main.py
     envVars:
+      - key: ASANA_TOKEN
+        sync: false
+      - key: ASANA_PROJECT_ID
+        sync: false
       - key: TELEGRAM_API_ID
-        value: 35507477
+        sync: false
       - key: TELEGRAM_API_HASH
-        value: 201ab47b2a808cc66c3ef61529dba649
+        sync: false
       - key: TELEGRAM_PHONE
-        value: +998775013234
-      - key: TELEGRAM_SESSION_STRING
         sync: false
-      - key: ELD_BASE_URL
-        value: https://api.drivehos.app/api/v1
-      - key: ELD_BEARER_TOKEN
+      - key: TELEGRAM_SESSION
         sync: false
-      - key: ELD_TENANT_ID
-        value: 96335ac3-5a93-4a29-af8b-08d874801325
-      - key: POLL_INTERVAL_SECONDS
-        value: 300
+      - key: FACTOR_API_TOKEN
+        sync: false
+      - key: LEADER_API_TOKEN
+        sync: false
+      - key: LEADER_COMPANY_ID
+        sync: false
+      - key: CHECK_INTERVAL_MINUTES
+        value: "5"
+      - key: DRIVE_ALERT_THRESHOLD_MIN
+        value: "60"
+      - key: SHIFT_ALERT_THRESHOLD_MIN
+        value: "60"
+      - key: BREAK_ALERT_THRESHOLD_MIN
+        value: "30"
+      - key: CYCLE_ALERT_THRESHOLD_HOURS
+        value: "5"

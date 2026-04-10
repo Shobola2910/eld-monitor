@@ -1,172 +1,106 @@
-# 🚛 ELD Monitor — Algo Group LLC
+# ELD Monitor
 
-Real-time ELD monitoring + Telegram avtomatik alertlar.
-Sizning Telegram accountingizdan driver guruhlarga xabar yuboradi (bot emas!).
+Factor ELD + Leader ELD → Telegram alertlar + Asana sync
 
----
-
-## 📁 Fayl Strukturasi
+## Fayllar tuzilmasi
 
 ```
-eld-monitor/
-├── main.py                    # FastAPI app (entry point)
-├── config.py                  # Settings (.env yuklash)
-├── database.py                # SQLite modellari
+eld_monitor/
+├── main.py           — FastAPI app + scheduler + dashboard
+├── monitor.py        — Monitoring logikasi
+├── factor_client.py  — Factor ELD API
+├── leader_client.py  — Leader ELD API
+├── asana_client.py   — Asana sync
+├── telegram_client.py— Telegram (Telethon)
+├── database.py       — SQLite (driver, cooldown, alert log)
+├── config.py         — .env dan sozlamalar
 ├── requirements.txt
-├── render.yaml                # Render.com deploy config
-├── .env.example               # Environment o'zgaruvchilar
-├── start.sh                   # Local ishga tushirish
-├── services/
-│   ├── eld_client.py          # Factor/Leader ELD API clients
-│   ├── telegram_client.py     # Telethon (user account)
-│   ├── monitor.py             # Monitoring engine + alert logic
-│   └── alert_messages.py      # 15x paraphrase templates
-├── routers/
-│   └── api.py                 # REST API endpoints
-└── frontend/
-    └── index.html             # Liquid Glass Dashboard
+├── render.yaml       — Render deploy
+└── .env              — Credentials (git ga qo'shma!)
 ```
 
----
-
-## 🚀 Local Ishga Tushirish
-
-```bash
-# 1. Papkaga kiring
-cd eld-monitor
-
-# 2. .env yarating
-cp .env.example .env
-# .env ni tahrirlang — tokenlarni kiriting
-
-# 3. Ishga tushiring
-chmod +x start.sh
-./start.sh
-
-# Yoki to'g'ridan-to'g'ri:
-pip install -r requirements.txt
-python main.py
-```
-
-Dashboard: http://localhost:8000
-
----
-
-## ⚙️ .env Sozlash
+## 1-qadam: .env to'ldirish
 
 ```env
+ASANA_TOKEN=2/1213271238071310/...
+ASANA_PROJECT_ID=           # app.asana.com URL'dan: .../0/XXXXXXX/...
 TELEGRAM_API_ID=35507477
 TELEGRAM_API_HASH=201ab47b2a808cc66c3ef61529dba649
-TELEGRAM_PHONE=+998775013234
-TELEGRAM_SESSION_STRING=   # Birinchi logindan keyin avtomatik to'ldiriladi
-
-ELD_BASE_URL=https://api.drivehos.app/api/v1
-ELD_BEARER_TOKEN=eyJ...    # Factor ELD bearer token
-ELD_TENANT_ID=96335ac3-5a93-4a29-af8b-08d874801325
-
-POLL_INTERVAL_SECONDS=300  # 5 daqiqa
+TELEGRAM_PHONE=+1XXXXXXXXXX
+TELEGRAM_SESSION=           # quyidagi 2-qadamdan keyin
+FACTOR_API_TOKEN=           # Factor dashboard → Settings → API
+LEADER_API_TOKEN=           # Leader dashboard → API
 ```
 
----
-
-## 📱 Telegram Birinchi Login
-
-1. Dasturni ishga tushiring
-2. Dashboard → **Telegram** sahifasiga o'ting
-3. **SMS Yuborish** tugmasini bosing
-4. Telefoningizga kelgan kodni kiriting
-5. Session saqlandi — keyingi ishga tushirishda OTP so'ralmaydi
-
-**Session string** ni `.env` ga qo'shib qo'ying (dastur avtomatik ko'rsatadi):
-```
-TELEGRAM_SESSION_STRING=1BVtsOK8Bu...
-```
-
----
-
-## 👤 Driver Qo'shish
-
-**Usul 1 — Avtomatik (ELD dan Sync):**
-- Drivers → "ELD dan Sync" → Factor ELD tanlang → Sync
-
-**Usul 2 — Qo'lda:**
-- Drivers → "Driver qo'shish" → Ma'lumotlarni kiriting
-
-**Telegram guruh ulash:**
-- Driver tahrirlash → Telegram Guruh dropdown → Tanlang
-
----
-
-## 🔔 Alert Turlari
-
-| Alert | Holat | Paraphrase |
-|-------|-------|-----------|
-| `cycle_low` | Cycle < 20 soat | 15 ta variant |
-| `drive_low` | Drive < 2 soat | 15 ta variant |
-| `shift_low` | Shift < 2 soat | 15 ta variant |
-| `break_low` | Break < 2 soat | 15 ta variant |
-| `document_incomplete` | Hujjat to'liq emas | 15 ta variant |
-| `disconnect` | ELD offline | 15 ta variant |
-| `on_break` | Break holatida | 15 ta variant |
-| `profile_form` | Profile muammosi | 15 ta variant |
-
-**Cooldown**: Bir xil alert 90 daqiqa ichida qayta yuborilmaydi.
-
----
-
-## 📡 Yangi ELD Qo'shish
-
-**Leader ELD API tayyor bo'lganda:**
-1. `services/eld_client.py` → `LeaderEldClient` klassini to'ldiring
-2. Dashboard → ELD Sources → "+ ELD qo'shish"
-3. Leader ELD ma'lumotlarini kiriting
-
----
-
-## 🌐 Render.com Deploy
+## 2-qadam: Telegram session olish
 
 ```bash
-# GitHub ga push qiling
-git init
-git add .
-git commit -m "ELD Monitor v2"
-git remote add origin https://github.com/Shobola2910/eld-monitor
-git push -u origin main
+pip install -r requirements.txt
+python -c "
+import asyncio
+from telegram_client import get_session_string
+print(asyncio.run(get_session_string()))
+"
+```
+Qaytgan stringni `.env` → `TELEGRAM_SESSION=` ga qo'ying.
+
+## 3-qadam: Local ishga tushirish
+
+```bash
+pip install -r requirements.txt
+python main.py
+# http://localhost:8000/dashboard
 ```
 
-Render.com:
-1. New Web Service → GitHub repo tanlang
-2. `render.yaml` avtomatik o'qiladi
-3. Environment variables → TELEGRAM_SESSION_STRING, ELD_BEARER_TOKEN qo'shing
+## 4-qadam: Driver → Telegram group ulash
 
----
+Driverlar avtomatik import qilinadi. Har bir driverga TG group ID qo'shish:
 
-## 🔧 API Endpoints
+```bash
+# Driverlar ro'yxati
+GET /drivers
 
-```
-GET  /api/drivers              — Barcha driverlar
-POST /api/drivers              — Driver qo'shish
-PUT  /api/drivers/{id}         — Driver yangilash
-DELETE /api/drivers/{id}       — Driver o'chirish
-POST /api/drivers/sync-from-eld — ELD dan import
+# TG group ID qo'shish
+PATCH /drivers/factor_12345
+{ "tg_group_id": "-1001234567890" }
 
-GET  /api/eld-sources          — ELD manbalar
-POST /api/eld-sources          — ELD manba qo'shish
-
-GET  /api/telegram/status      — Telegram holati
-POST /api/telegram/auth/send-code — OTP yuborish
-POST /api/telegram/auth/verify — OTP tasdiqlash
-GET  /api/telegram/groups      — Guruhlar ro'yxati
-POST /api/telegram/send        — Test xabar
-
-POST /api/monitor/run          — Monitor qo'lda ishlatish
-GET  /api/monitor/alerts       — Alert tarixi
-GET  /api/monitor/alerts/stats — Statistika
+# Asana task ID qo'shish
+PATCH /drivers/factor_12345
+{ "asana_task_id": "1234567890" }
 ```
 
----
+### Telegram group ID topish:
+@userinfobot ga guruh ichidan `/start` yubor → ID ko'rsatadi
 
-## 📞 Qo'llab-quvvatlash
+## 5-qadam: Render deploy
 
-- Algo Group LLC
-- ELD: Factor (drivehos.app), Leader (kelgusida)
+1. GitHub'ga push qiling
+2. Render → New Web Service → repo tanlang
+3. Environment variables → hammani kiriting
+4. Deploy
+
+## Endpoints
+
+| Endpoint | Vazifa |
+|---|---|
+| `GET /dashboard` | HTML dashboard |
+| `GET /drivers` | Driverlar ro'yxati |
+| `POST /drivers/sync` | ELD'dan driverlarni import |
+| `PATCH /drivers/{id}` | TG group / Asana task qo'shish |
+| `POST /check-now` | Qo'lda monitoring ishga tushirish |
+| `GET /alerts` | Alert tarixi |
+| `GET /asana/tasks` | Asana tasklari |
+| `POST /test-telegram` | Test xabar yuborish |
+| `GET /setup-telegram` | Session string olish |
+
+## Alert shartlari
+
+| Alert | Shart |
+|---|---|
+| Drive Low | < 60 min qolsa |
+| Shift Low | < 60 min qolsa |
+| Break Needed | < 30 min qolsa |
+| Cycle Low | < 5 soat qolsa |
+| Disconnect | ELD uzilib qolsa |
+
+Har bir driver uchun **5 daqiqa cooldown** — spamdan himoya.

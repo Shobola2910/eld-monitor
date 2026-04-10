@@ -1,95 +1,113 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, Text, JSON
-from datetime import datetime
-from typing import Optional
-import json
+import aiosqlite
+from config import DB_PATH
 
-import os
-_data_dir = "/data" if os.path.exists("/data") else "."
-DATABASE_URL = f"sqlite+aiosqlite:///{_data_dir}/eld_monitor.db"
+CREATE_SQL = """
+CREATE TABLE IF NOT EXISTS drivers (
+    id          TEXT PRIMARY KEY,
+    name        TEXT,
+    platform    TEXT,          -- 'factor' | 'leader'
+    company     TEXT,
+    tg_group_id TEXT,          -- Telegram group/chat ID for this driver
+    asana_task_id TEXT,
+    is_active   INTEGER DEFAULT 1
+);
 
-engine = create_async_engine(DATABASE_URL, echo=False)
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+CREATE TABLE IF NOT EXISTS alert_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    driver_id   TEXT,
+    alert_type  TEXT,          -- 'hos_drive'|'hos_shift'|'hos_break'|'hos_cycle'|'disconnect'
+    message     TEXT,
+    sent_at     TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (driver_id) REFERENCES drivers(id)
+);
 
-
-class Base(DeclarativeBase):
-    pass
-
-
-class Driver(Base):
-    """Maps ELD driver to Telegram group chat"""
-    __tablename__ = "drivers"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    eld_driver_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
-    driver_name: Mapped[str] = mapped_column(String(200))
-    driver_email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    telegram_chat_title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    eld_source: Mapped[str] = mapped_column(String(50), default="factor")  # factor, leader, etc.
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    company_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class AlertLog(Base):
-    """Logs all sent alerts to prevent spam"""
-    __tablename__ = "alert_logs"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    driver_id: Mapped[str] = mapped_column(String(100), index=True)
-    alert_type: Mapped[str] = mapped_column(String(100))  # e.g. "cycle_low", "disconnect"
-    alert_key: Mapped[str] = mapped_column(String(200))   # unique key for dedup
-    message_sent: Mapped[str] = mapped_column(Text)
-    telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    eld_source: Mapped[str] = mapped_column(String(50), default="factor")
-    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    extra_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
-
-
-class TelegramGroup(Base):
-    """All Telegram groups the user is a member of"""
-    __tablename__ = "telegram_groups"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    chat_id: Mapped[str] = mapped_column(String(100), unique=True)
-    title: Mapped[str] = mapped_column(String(300))
-    chat_type: Mapped[str] = mapped_column(String(50))  # group, supergroup, channel
-    member_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    last_synced: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class AppSettings(Base):
-    """Key-value settings store"""
-    __tablename__ = "app_settings"
-
-    key: Mapped[str] = mapped_column(String(100), primary_key=True)
-    value: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class EldSource(Base):
-    """Registered ELD sources (Factor, Leader, etc.)"""
-    __tablename__ = "eld_sources"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
-    display_name: Mapped[str] = mapped_column(String(200))
-    base_url: Mapped[str] = mapped_column(String(500))
-    bearer_token: Mapped[str] = mapped_column(Text)
-    tenant_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    extra_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
+CREATE TABLE IF NOT EXISTS cooldowns (
+    driver_id   TEXT PRIMARY KEY,
+    last_sent   TEXT           -- ISO datetime of last Telegram message
+);
+"""
 
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with aiosqlite.connect(DB_PATH) as db:
+        for stmt in CREATE_SQL.strip().split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                await db.execute(stmt)
+        await db.commit()
 
+async def get_all_drivers():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM drivers WHERE is_active=1") as cur:
+            return [dict(r) for r in await cur.fetchall()]
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
+async def get_driver(driver_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM drivers WHERE id=?", (driver_id,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+async def upsert_driver(d: dict):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO drivers (id, name, platform, company, tg_group_id, asana_task_id)
+            VALUES (:id, :name, :platform, :company, :tg_group_id, :asana_task_id)
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name,
+                platform=excluded.platform,
+                company=excluded.company
+        """, d)
+        await db.commit()
+
+async def set_tg_group(driver_id: str, group_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE drivers SET tg_group_id=? WHERE id=?", (group_id, driver_id))
+        await db.commit()
+
+async def set_asana_task(driver_id: str, task_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE drivers SET asana_task_id=? WHERE id=?", (task_id, driver_id))
+        await db.commit()
+
+async def can_send_alert(driver_id: str, cooldown_minutes: int = 5) -> bool:
+    """5 daqiqa cooldown — spamdan himoya"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("""
+            SELECT last_sent FROM cooldowns WHERE driver_id=?
+        """, (driver_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return True
+        from datetime import datetime, timezone
+        last = datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
+        now  = datetime.now(timezone.utc)
+        return (now - last).total_seconds() >= cooldown_minutes * 60
+
+async def mark_sent(driver_id: str):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO cooldowns (driver_id, last_sent) VALUES (?,?)
+            ON CONFLICT(driver_id) DO UPDATE SET last_sent=excluded.last_sent
+        """, (driver_id, now))
+        await db.commit()
+
+async def log_alert(driver_id: str, alert_type: str, message: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO alert_log (driver_id, alert_type, message) VALUES (?,?,?)",
+            (driver_id, alert_type, message)
+        )
+        await db.commit()
+
+async def get_recent_alerts(limit: int = 50):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT a.*, d.name as driver_name, d.platform
+            FROM alert_log a LEFT JOIN drivers d ON a.driver_id=d.id
+            ORDER BY a.sent_at DESC LIMIT ?
+        """, (limit,)) as cur:
+            return [dict(r) for r in await cur.fetchall()]
